@@ -1,16 +1,3 @@
-receptor = files/receptor.pdbqt
-ligand = files/ligand.pdbqt
-
-center_x = 26.0
-center_y = 26.0
-center_z = 26.0
-
-size_x = 20
-size_y = 20
-size_z = 20
-
-out = output/output_docked.pdbqt
-log = output/log.txt
-
-exhaustiveness = 8
-num_modes = 5
+version https://git-lfs.github.com/spec/v1
+oid sha256:ae4ba40ab491ffe408534c9aa8d108e21489e086d3081de27cfafb7e29fbf925
+size 249
