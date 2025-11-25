@@ -1,0 +1,16 @@
+receptor = files/receptor.pdbqt
+ligand = files/ligand.pdbqt
+
+center_x = 26.0
+center_y = 26.0
+center_z = 26.0
+
+size_x = 20
+size_y = 20
+size_z = 20
+
+out = output/output_docked.pdbqt
+log = output/log.txt
+
+exhaustiveness = 8
+num_modes = 5
