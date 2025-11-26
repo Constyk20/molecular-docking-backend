@@ -5,19 +5,27 @@ services:
     plan: free
     region: oregon
     buildCommand: |
+      echo "📦 Installing dependencies..."
       npm install
+      echo "📁 Creating directories..."
       mkdir -p tools
       mkdir -p output
+      echo "📥 Downloading AutoDock Vina..."
       cd tools
       if [ ! -f "vina_1.2.5_linux_x86_64" ]; then
-        echo "📥 Downloading AutoDock Vina..."
         wget https://github.com/ccsb-scripps/AutoDock-Vina/releases/download/v1.2.5/vina_1.2.5_linux_x86_64
         chmod +x vina_1.2.5_linux_x86_64
         echo "✅ Vina downloaded successfully"
+      else
+        echo "✅ Vina already exists"
       fi
+      echo "🔑 Setting execute permissions..."
+      chmod +x vina_1.2.5_linux_x86_64
+      ls -la
       cd ..
+      echo "📝 Checking config.txt..."
       if [ ! -f "config.txt" ]; then
-        echo "📝 Creating config.txt..."
+        echo "⚠️  config.txt not found, creating default..."
         cat > config.txt << 'EOF'
       receptor = receptor.pdbqt
       ligand = ligand.pdbqt
@@ -31,8 +39,11 @@ services:
       out = output/output_docked.pdbqt
       log = output/log.txt
       EOF
-        echo "✅ config.txt created"
+      else
+        echo "✅ config.txt found"
       fi
+      echo "📋 Listing files..."
+      ls -la
       echo "✅ Build complete!"
     startCommand: node server.js
     envVars:
