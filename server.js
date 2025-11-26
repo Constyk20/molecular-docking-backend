@@ -793,10 +793,10 @@ app.listen(PORT, '0.0.0.0', () => {
   console.log('═══════════════════════════════════════════');
   console.log('🚀 Molecular Docking Server Started');
   console.log('═══════════════════════════════════════');
-  console.log(`📡 Server:  http://localhost:${PORT}`);
-  console.log(`🔬 Viewer:  http://localhost:${PORT}/viewer/output_docked.pdbqt`);
-  console.log(`💚 Health:  http://localhost:${PORT}/health`);
-  console.log(`📁 Files:   http://localhost:${PORT}/output/`);
+  console.log(`📡 Server:  https://molecular-docking-app.onrender.com`);
+  console.log(`🔬 Viewer:  https://molecular-docking-app.onrender.com/viewer/output_docked.pdbqt`);
+  console.log(`💚 Health:  https://molecular-docking-app.onrender.com/health`);
+  console.log(`📁 Files:   https://molecular-docking-app.onrender.com/output/`);
   console.log('═══════════════════════════════════════════');
   console.log('📋 System Info:');
   console.log(`  Platform: ${process.platform}`);
