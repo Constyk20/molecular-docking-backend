@@ -18,9 +18,12 @@ app.use(cors({
 app.use(express.json());
 
 // ---------- CONFIG ----------
-const projectRoot = path.resolve(__dirname, '..');
+const projectRoot = process.env.NODE_ENV === 'production' 
+  ? __dirname 
+  : path.resolve(__dirname, '..');
+  
 const outputDir = path.join(projectRoot, 'output');
-const vinaPath = path.join(projectRoot, 'tools', process.platform === 'win32' ? 'vina.exe' : 'vina_1.2.5_linux_x86_64');
+const vinaPath = path.join(projectRoot, 'tools', process.platform === 'win32' ? 'vina.exe' : 'vina');
 const configPath = path.join(projectRoot, 'config.txt');
 
 // Create output folder

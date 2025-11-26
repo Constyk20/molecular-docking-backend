@@ -16,6 +16,23 @@ services:
         echo "✅ Vina downloaded successfully"
       fi
       cd ..
+      if [ ! -f "config.txt" ]; then
+        echo "📝 Creating config.txt..."
+        cat > config.txt << 'EOF'
+      receptor = receptor.pdbqt
+      ligand = ligand.pdbqt
+      center_x = 0
+      center_y = 0
+      center_z = 0
+      size_x = 20
+      size_y = 20
+      size_z = 20
+      exhaustiveness = 8
+      out = output/output_docked.pdbqt
+      log = output/log.txt
+      EOF
+        echo "✅ config.txt created"
+      fi
       echo "✅ Build complete!"
     startCommand: node server.js
     envVars:
