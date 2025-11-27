@@ -1,4 +1,16 @@
-REMARK  Name = ligand
+REMARK  Ligand for molecular docking test
+REMARK  1 active torsions:
+REMARK  status: ('A' for Active; 'I' for Inactive)
+REMARK    1  A    between atoms: C_2  and  C_3
+ROOT
+ATOM      1  C   LIG d   1       0.000   0.000   0.000  0.00  0.00    +0.000 C 
+ATOM      2  C   LIG d   1       1.400   0.000   0.000  0.00  0.00    +0.000 C 
+ENDROOT
+BRANCH   2   3
+ATOM      3  C   LIG d   1       2.100   1.200   0.000  0.00  0.00    +0.000 C 
+ATOM      4  O   LIG d   1       1.400   2.400   0.000  0.00  0.00    -0.000 OA
+ENDBRANCH   2   3
+TORSDOF 1REMARK  Name = ligand
 REMARK  1 active torsions:
 REMARK  status: ('A' for Active; 'I' for Inactive)
 ROOT

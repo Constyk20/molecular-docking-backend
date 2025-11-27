@@ -1,4 +1,15 @@
-REMARK  Name = receptor
+REMARK  Receptor for molecular docking test
+ATOM      1  N   GLY A   1       0.000   0.000   0.000  1.00  0.00    -0.347 N 
+ATOM      2  CA  GLY A   1       1.450   0.000   0.000  1.00  0.00     0.222 C 
+ATOM      3  C   GLY A   1       2.035   1.400   0.000  1.00  0.00     0.737 C 
+ATOM      4  O   GLY A   1       1.311   2.391   0.000  1.00  0.00    -0.607 OA
+ATOM      5  H   GLY A   1      -0.333   0.000   0.943  1.00  0.00     0.164 HD
+ATOM      6  N   ALA A   2       3.368   1.495   0.000  1.00  0.00    -0.346 N 
+ATOM      7  CA  ALA A   2       4.050   2.784   0.000  1.00  0.00     0.222 C 
+ATOM      8  C   ALA A   2       5.565   2.591   0.000  1.00  0.00     0.737 C 
+ATOM      9  O   ALA A   2       6.094   1.481   0.000  1.00  0.00    -0.607 OA
+ATOM     10  CB  ALA A   2       3.648   3.581   1.235  1.00  0.00     0.034 C 
+ATOM     11  H   ALA A   2       3.897   0.641   0.000  1.00  0.00     0.164 HDREMARK  Name = receptor
 REMARK  2 active torsions:
 REMARK  status: ('A' for Active; 'I' for Inactive)
 ROOT
