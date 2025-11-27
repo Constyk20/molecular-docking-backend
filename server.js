@@ -309,35 +309,85 @@ app.get('/viewer/:filename', (req, res) => {
     ];
 
     function initViewer() {
-      const element = $('#viewport');
-      viewer = $3Dmol.createViewer(element, { 
-        backgroundColor: 'white', 
-        antialias: true 
-      });
+      const element = $('#viewport')[0];
+      if (!element) {
+        console.error('Viewport element not found');
+        return;
+      }
 
-      $.ajax({
-        url: "${pdbqtUrl}",
-        dataType: 'text',
-        timeout: 30000,
-        success: function(data) {
-          const model = viewer.addModel(data, 'pdbqt');
-          const atoms = model.selectedAtoms({});
-          
-          viewer.setStyle({}, { stick: { radius: 0.15 } });
-          viewer.zoomTo();
-          viewer.render();
-          
-          $('#loading').fadeOut(500);
-          $('#info-panel').fadeIn(500);
-          $('#atom-count').text(atoms.length);
-        },
-        error: function(xhr, status, error) {
-          $('#loading').html('<div style="background: white; padding: 20px; border-radius: 12px;"><h2 style="color: #e53e3e;">Error Loading Structure</h2><p style="color: #4a5568; margin-top: 10px;">Status: ' + xhr.status + '<br>Error: ' + error + '</p></div>');
-        }
-      });
+      try {
+        viewer = $3Dmol.createViewer(element, { 
+          backgroundColor: 'white', 
+          antialias: true 
+        });
+
+        $.ajax({
+          url: "${pdbqtUrl}",
+          dataType: 'text',
+          timeout: 30000,
+          success: function(data) {
+            try {
+              if (!data || data.trim().length === 0) {
+                throw new Error('File is empty');
+              }
+              
+              const model = viewer.addModel(data, 'pdbqt');
+              const atoms = model.selectedAtoms({});
+              
+              if (atoms.length === 0) {
+                throw new Error('No atoms found in structure');
+              }
+              
+              viewer.setStyle({}, { stick: { radius: 0.15 } });
+              viewer.zoomTo();
+              viewer.render();
+              
+              $('#loading').fadeOut(500);
+              $('#info-panel').fadeIn(500);
+              $('#atom-count').text(atoms.length);
+              
+              console.log('Structure loaded successfully:', atoms.length, 'atoms');
+            } catch (parseError) {
+              console.error('Error parsing structure:', parseError);
+              $('#loading').html(
+                '<div style="background: white; padding: 20px; border-radius: 12px; color: #e53e3e;">' +
+                '<h2>Error Loading Structure</h2>' +
+                '<p>Failed to parse molecular structure:</p>' +
+                '<pre style="background: #f7fafc; padding: 10px; border-radius: 4px; margin-top: 10px; font-size: 12px; overflow: auto;">' + 
+                parseError.message + '</pre>' +
+                '</div>'
+              );
+            }
+          },
+          error: function(xhr, status, error) {
+            console.error('AJAX error:', status, error);
+            $('#loading').html(
+              '<div style="background: white; padding: 20px; border-radius: 12px;">' +
+              '<h2 style="color: #e53e3e;">Error Loading Structure</h2>' +
+              '<p style="color: #4a5568; margin-top: 10px;">' +
+              'Status: ' + xhr.status + '<br>' +
+              'Error: ' + error + '<br>' +
+              'URL: ' + "${pdbqtUrl}" +
+              '</p></div>'
+            );
+          }
+        });
+      } catch (viewerError) {
+        console.error('Viewer initialization error:', viewerError);
+        $('#loading').html(
+          '<div style="background: white; padding: 20px; border-radius: 12px; color: #e53e3e;">' +
+          '<h2>3D Viewer Error</h2>' +
+          '<p>Failed to initialize 3D viewer:</p>' +
+          '<pre style="background: #f7fafc; padding: 10px; border-radius: 4px; margin-top: 10px; font-size: 12px;">' + 
+          viewerError.message + '</pre>' +
+          '</div>'
+        );
+      }
     }
 
     function changeStyle() {
+      if (!viewer) return;
+      
       currentStyle = (currentStyle + 1) % styles.length;
       const style = styles[currentStyle];
       const styleConfig = {};
@@ -348,16 +398,19 @@ app.get('/viewer/:filename', (req, res) => {
     }
 
     function zoomIn() {
+      if (!viewer) return;
       viewer.zoom(1.2);
       viewer.render();
     }
 
     function zoomOut() {
+      if (!viewer) return;
       viewer.zoom(0.8);
       viewer.render();
     }
 
     function resetView() {
+      if (!viewer) return;
       viewer.zoomTo();
       viewer.render();
       currentStyle = 0;
@@ -464,6 +517,18 @@ app.post('/run-docking', (req, res) => {
     fs.writeFileSync(logPath, stdout);
     console.log('✅ Log saved to:', logPath);
 
+    // Check if output file was created
+    const outputFile = path.join(outputDir, 'output_docked.pdbqt');
+    if (!fs.existsSync(outputFile)) {
+      console.error('❌ Output file not created:', outputFile);
+      return res.status(500).json({
+        error: 'Docking completed but output file was not created',
+        details: 'Check config.txt for correct output paths',
+        stdout: stdout,
+        stderr: stderr
+      });
+    }
+
     // Parse scores from stdout
     let bestScore = 'Not found';
     let allScores = [];
@@ -491,6 +556,8 @@ app.post('/run-docking', (req, res) => {
     console.log('  Best Score:', bestScore, 'kcal/mol');
     console.log('  All Scores:', allScores.join(', '));
     console.log('  Duration:', duration, 's');
+    console.log('  Output File:', outputFile);
+    console.log('  File Size:', fs.statSync(outputFile).size, 'bytes');
     console.log('═══════════════════════════════════════════');
     console.log('🔗 URLs:');
     console.log('  Viewer:', viewerUrl);
@@ -507,8 +574,26 @@ app.post('/run-docking', (req, res) => {
       viewerUrl: viewerUrl,
       downloadUrl: pdbqtUrl,
       duration: duration + 's',
-      timestamp: new Date().toISOString()
+      timestamp: new Date().toISOString(),
+      fileSize: fs.statSync(outputFile).size
     });
+  });
+});
+
+// ---------- FILE CHECK ENDPOINT ----------
+app.get('/check-file/:filename', (req, res) => {
+  const filename = path.basename(req.params.filename);
+  const filePath = path.join(outputDir, filename);
+  
+  const exists = fs.existsSync(filePath);
+  const stats = exists ? fs.statSync(filePath) : null;
+  
+  res.json({
+    exists: exists,
+    filename: filename,
+    path: filePath,
+    size: exists ? stats.size : 0,
+    modified: exists ? stats.mtime : null
   });
 });
 
