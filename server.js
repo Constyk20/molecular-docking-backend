@@ -430,7 +430,17 @@ app.post('/run-docking', (req, res) => {
 
   const startTime = Date.now();
 
-  exec(command, { cwd: projectRoot, maxBuffer: 1024 * 1024 * 10 }, (err, stdout, stderr) => {
+  // Set a timeout to prevent hanging
+  const execTimeout = setTimeout(() => {
+    console.error('❌ Docking timeout - process took too long');
+  }, 120000); // 2 minutes timeout
+
+  exec(command, { 
+    cwd: projectRoot, 
+    maxBuffer: 1024 * 1024 * 10,
+    timeout: 120000 // 2 minutes
+  }, (err, stdout, stderr) => {
+    clearTimeout(execTimeout);
     const duration = ((Date.now() - startTime) / 1000).toFixed(2);
 
     if (err) {
