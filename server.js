@@ -18,20 +18,16 @@ app.use(cors({
 app.use(express.json());
 
 // ---------- CONFIG ----------
-// Use current directory in production, parent directory in development
 const projectRoot = process.env.NODE_ENV === 'production' 
   ? __dirname 
   : path.resolve(__dirname, '..');
   
 const outputDir = path.join(projectRoot, 'output');
-
-// FIXED: Use 'vina' symlink instead of full filename
 const vinaPath = path.join(
   projectRoot, 
   'tools', 
   process.platform === 'win32' ? 'vina.exe' : 'vina'
 );
-
 const configPath = path.join(projectRoot, 'config.txt');
 
 // Create output folder
@@ -39,13 +35,22 @@ if (!fs.existsSync(outputDir)) {
   fs.mkdirSync(outputDir, { recursive: true });
 }
 
-// CORS headers on static files with proper MIME types
-app.use('/output', express.static(outputDir, {
+// FIXED: Enhanced static file serving with proper CORS headers
+app.use('/output', (req, res, next) => {
+  // Set CORS headers for all static file requests
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  
+  // Handle preflight requests
+  if (req.method === 'OPTIONS') {
+    return res.status(200).end();
+  }
+  
+  next();
+}, express.static(outputDir, {
   setHeaders: (res, filepath) => {
-    res.setHeader('Access-Control-Allow-Origin', '*');
-    res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
-    
+    // Additional headers for PDBQT files
     if (filepath.endsWith('.pdbqt')) {
       res.setHeader('Content-Type', 'text/plain; charset=utf-8');
       res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
@@ -54,6 +59,26 @@ app.use('/output', express.static(outputDir, {
     }
   }
 }));
+
+// ---------- DIRECT FILE ACCESS ENDPOINT ----------
+// Add a direct endpoint to serve PDBQT files with proper headers
+app.get('/file/:filename', (req, res) => {
+  const filename = path.basename(req.params.filename);
+  const filePath = path.join(outputDir, filename);
+  
+  if (!fs.existsSync(filePath)) {
+    return res.status(404).json({ error: 'File not found', filename: filename });
+  }
+  
+  // Set proper headers for PDBQT files
+  if (filename.endsWith('.pdbqt')) {
+    res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+  }
+  
+  res.sendFile(filePath);
+});
 
 // ---------- PDBQT FILE VALIDATION AND CLEANING ----------
 function cleanPDBQTContent(content, type = 'receptor') {
@@ -170,7 +195,8 @@ size_y = 20.0
 size_z = 20.0
 num_modes = 9
 energy_range = 3
-exhaustiveness = 8`;
+exhaustiveness = 8
+out = output/output_docked.pdbqt`;
     
     fs.writeFileSync(configPath, defaultConfig);
     console.log('✅ Created default config.txt');
@@ -190,8 +216,8 @@ app.get('/health', (req, res) => {
   const configExists = fs.existsSync(configPath);
   const receptorExists = fs.existsSync(path.join(projectRoot, 'receptor.pdbqt'));
   const ligandExists = fs.existsSync(path.join(projectRoot, 'ligand.pdbqt'));
+  const outputExists = fs.existsSync(path.join(outputDir, 'output_docked.pdbqt'));
   
-  // Check if Vina is executable
   let vinaExecutable = false;
   if (vinaExists) {
     try {
@@ -211,6 +237,7 @@ app.get('/health', (req, res) => {
     configPath: configPath,
     receptorExists: receptorExists,
     ligandExists: ligandExists,
+    outputExists: outputExists,
     outputDir: outputDir,
     platform: process.platform,
     nodeVersion: process.version,
@@ -257,7 +284,9 @@ app.get('/viewer/:filename', (req, res) => {
   const protocol = req.protocol;
   const host = req.get('host');
   const baseUrl = `${protocol}://${host}`;
-  const pdbqtUrl = `${baseUrl}/output/${filename}`;
+  
+  // FIXED: Use the direct file endpoint instead of static path
+  const pdbqtUrl = `${baseUrl}/file/${filename}`;
   
   console.log('═══════════════════════════════════════════');
   console.log('🔬 3D Viewer Request');
@@ -265,6 +294,8 @@ app.get('/viewer/:filename', (req, res) => {
   console.log('Filename:', filename);
   console.log('File Path:', filePath);
   console.log('PDBQT URL:', pdbqtUrl);
+  console.log('File exists:', fs.existsSync(filePath));
+  console.log('File size:', fs.statSync(filePath).size, 'bytes');
   console.log('═══════════════════════════════════════════');
 
   const viewerHTML = `
@@ -275,10 +306,7 @@ app.get('/viewer/:filename', (req, res) => {
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>3D Molecular Structure Viewer - ${filename}</title>
   
-  <script src="https://code.jquery.com/jquery-3.6.0.min.js" 
-          integrity="sha256-/xUj+3OJU5yExlq6GSYGSHk7tPXikynS7ogEvDej/m4=" 
-          crossorigin="anonymous"></script>
-  
+  <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
   <script src="https://3Dmol.csb.pitt.edu/build/3Dmol-min.js"></script>
   
   <style>
@@ -395,16 +423,26 @@ app.get('/viewer/:filename', (req, res) => {
     .info-item:last-child { border-bottom: none; }
     .info-label { font-size: 13px; color: #718096; }
     .info-value { font-size: 13px; font-weight: 600; color: #2d3748; }
+    .error-message {
+      background: #fed7d7;
+      border: 1px solid #feb2b2;
+      border-radius: 8px;
+      padding: 16px;
+      margin: 20px;
+      text-align: center;
+      color: #c53030;
+    }
   </style>
 </head>
 <body>
   <div class="header">
-    <h1>Molecular Docking Result</h1>
+    <h1>Molecular Docking Result - ${filename}</h1>
     <div class="controls">
       <button class="btn btn-secondary" onclick="zoomIn()">🔍 +</button>
       <button class="btn btn-secondary" onclick="zoomOut()">🔍 -</button>
       <button class="btn btn-secondary" onclick="resetView()">🔄 Reset</button>
       <button class="btn btn-primary" onclick="changeStyle()">🎨 Style</button>
+      <button class="btn btn-secondary" onclick="downloadFile()">📥 Download</button>
     </div>
   </div>
 
@@ -412,6 +450,7 @@ app.get('/viewer/:filename', (req, res) => {
     <div class="loading" id="loading">
       <div class="spinner"></div>
       <div>Loading 3D Structure...</div>
+      <div style="font-size: 14px; margin-top: 10px;" id="loading-details"></div>
     </div>
     <div id="viewport"></div>
     
@@ -441,31 +480,58 @@ app.get('/viewer/:filename', (req, res) => {
       { name: 'Line', style: 'line' }
     ];
 
+    function updateLoading(message) {
+      $('#loading-details').text(message);
+    }
+
     function initViewer() {
+      updateLoading('Initializing viewer...');
       const element = $('#viewport');
       viewer = $3Dmol.createViewer(element, { 
         backgroundColor: 'white', 
         antialias: true 
       });
 
+      updateLoading('Fetching structure data...');
+      
+      // FIXED: Enhanced AJAX request with better error handling
       $.ajax({
         url: "${pdbqtUrl}",
         dataType: 'text',
         timeout: 30000,
+        beforeSend: function() {
+          updateLoading('Connecting to server...');
+        },
         success: function(data) {
-          const model = viewer.addModel(data, 'pdbqt');
-          const atoms = model.selectedAtoms({});
-          
-          viewer.setStyle({}, { stick: { radius: 0.15 } });
-          viewer.zoomTo();
-          viewer.render();
-          
-          $('#loading').fadeOut(500);
-          $('#info-panel').fadeIn(500);
-          $('#atom-count').text(atoms.length);
+          updateLoading('Parsing structure...');
+          try {
+            const model = viewer.addModel(data, 'pdbqt');
+            const atoms = model.selectedAtoms({});
+            
+            viewer.setStyle({}, { stick: { radius: 0.15 } });
+            viewer.zoomTo();
+            viewer.render();
+            
+            $('#loading').fadeOut(500);
+            $('#info-panel').fadeIn(500);
+            $('#atom-count').text(atoms.length);
+            updateLoading('');
+            
+            console.log('✅ Structure loaded successfully:', atoms.length, 'atoms');
+          } catch (parseError) {
+            $('#loading').html('<div class="error-message"><h2>Structure Parsing Error</h2><p>Failed to parse PDBQT file: ' + parseError.message + '</p></div>');
+          }
         },
         error: function(xhr, status, error) {
-          $('#loading').html('<div style="background: white; padding: 20px; border-radius: 12px;"><h2 style="color: #e53e3e;">Error Loading Structure</h2><p style="color: #4a5568; margin-top: 10px;">Status: ' + xhr.status + '<br>Error: ' + error + '</p></div>');
+          let errorMsg = 'Status: ' + xhr.status + '\\nError: ' + error;
+          if (xhr.status === 0) {
+            errorMsg = 'Network error: Cannot connect to server. This may be a CORS issue.';
+          } else if (xhr.status === 404) {
+            errorMsg = 'File not found on server.';
+          }
+          
+          $('#loading').html('<div class="error-message"><h2>Error Loading Structure</h2><p>' + errorMsg + '</p><p>File URL: ${pdbqtUrl}</p></div>');
+          console.error('❌ AJAX Error:', status, error, xhr);
         }
       });
     }
@@ -499,7 +565,13 @@ app.get('/viewer/:filename', (req, res) => {
       $('#current-style').text('Stick');
     }
 
+    function downloadFile() {
+      window.open('${pdbqtUrl}', '_blank');
+    }
+
     $(document).ready(function() {
+      console.log('🚀 Initializing 3D viewer...');
+      console.log('PDBQT URL:', '${pdbqtUrl}');
       setTimeout(initViewer, 100);
     });
   </script>
@@ -648,7 +720,7 @@ app.post('/run-docking', (req, res) => {
     const protocol = req.protocol;
     const host = req.get('host');
     const viewerUrl = `${protocol}://${host}/viewer/output_docked.pdbqt`;
-    const pdbqtUrl = `${protocol}://${host}/output/output_docked.pdbqt`;
+    const pdbqtUrl = `${protocol}://${host}/file/output_docked.pdbqt`;
 
     console.log('═══════════════════════════════════════════');
     console.log('📊 Results:');
@@ -667,7 +739,7 @@ app.post('/run-docking', (req, res) => {
       score: bestScore + ' kcal/mol',
       bestScore: bestScore,
       allScores: allScores,
-      pdbqtUrl: viewerUrl,
+      pdbqtUrl: pdbqtUrl,
       viewerUrl: viewerUrl,
       downloadUrl: pdbqtUrl,
       duration: duration + 's',
@@ -730,6 +802,7 @@ app.listen(PORT, '0.0.0.0', () => {
   console.log(`🔬 Viewer:  http://localhost:${PORT}/viewer/output_docked.pdbqt`);
   console.log(`💚 Health:  http://localhost:${PORT}/health`);
   console.log(`📁 Files:   http://localhost:${PORT}/output/`);
+  console.log(`📄 Direct:   http://localhost:${PORT}/file/`);
   console.log('═══════════════════════════════════════════');
   console.log('📋 System Info:');
   console.log(`  Platform: ${process.platform}`);
