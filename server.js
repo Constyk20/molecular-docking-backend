@@ -50,9 +50,9 @@ app.use('/output', (req, res, next) => {
   next();
 }, express.static(outputDir, {
   setHeaders: (res, filepath) => {
-    // Additional headers for PDBQT files
+    // FIXED: Proper MIME type for PDBQT files
     if (filepath.endsWith('.pdbqt')) {
-      res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+      res.setHeader('Content-Type', 'chemical/x-pdb');
       res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
       res.setHeader('Pragma', 'no-cache');
       res.setHeader('Expires', '0');
@@ -70,9 +70,9 @@ app.get('/file/:filename', (req, res) => {
     return res.status(404).json({ error: 'File not found', filename: filename });
   }
   
-  // Set proper headers for PDBQT files
+  // FIXED: Proper MIME type for PDBQT files
   if (filename.endsWith('.pdbqt')) {
-    res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+    res.setHeader('Content-Type', 'chemical/x-pdb');
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
   }
@@ -486,77 +486,92 @@ app.get('/viewer/:filename', (req, res) => {
 
     function initViewer() {
       updateLoading('Initializing viewer...');
-      const element = $('#viewport');
-      viewer = $3Dmol.createViewer(element, { 
-        backgroundColor: 'white', 
-        antialias: true 
-      });
-
-      updateLoading('Fetching structure data...');
+      const element = $('#viewport')[0];
       
-      // FIXED: Enhanced AJAX request with better error handling
-      $.ajax({
-        url: "${pdbqtUrl}",
-        dataType: 'text',
-        timeout: 30000,
-        beforeSend: function() {
-          updateLoading('Connecting to server...');
-        },
-        success: function(data) {
+      // FIXED: Proper 3Dmol initialization
+      viewer = $3Dmol.createViewer(element, {
+        backgroundColor: 'white'
+      });
+      
+      updateLoading('Loading structure data...');
+      
+      // FIXED: Use fetch API instead of jQuery for better error handling
+      fetch('${pdbqtUrl}')
+        .then(response => {
+          if (!response.ok) {
+            throw new Error('HTTP error! status: ' + response.status);
+          }
+          return response.text();
+        })
+        .then(data => {
           updateLoading('Parsing structure...');
+          
+          // FIXED: Use 'pdb' format instead of 'pdbqt' for better compatibility
           try {
-            const model = viewer.addModel(data, 'pdbqt');
-            const atoms = model.selectedAtoms({});
-            
-            viewer.setStyle({}, { stick: { radius: 0.15 } });
+            viewer.addModel(data, 'pdb');
+            viewer.setStyle({}, {stick: {radius: 0.15}});
             viewer.zoomTo();
             viewer.render();
+            
+            const atoms = viewer.getModel().selectedAtoms({});
             
             $('#loading').fadeOut(500);
             $('#info-panel').fadeIn(500);
             $('#atom-count').text(atoms.length);
             updateLoading('');
             
-            console.log('✅ Structure loaded successfully:', atoms.length, 'atoms');
+            console.log('✅ Structure loaded successfully! Atoms:', atoms.length);
           } catch (parseError) {
-            $('#loading').html('<div class="error-message"><h2>Structure Parsing Error</h2><p>Failed to parse PDBQT file: ' + parseError.message + '</p></div>');
+            console.error('❌ Parsing error:', parseError);
+            $('#loading').html(
+              '<div class="error-message">' +
+              '<h2>Structure Parsing Error</h2>' +
+              '<p>Failed to parse molecular structure.</p>' +
+              '<p>Error: ' + parseError.message + '</p>' +
+              '</div>'
+            );
           }
-        },
-        error: function(xhr, status, error) {
-          let errorMsg = 'Status: ' + xhr.status + '\\nError: ' + error;
-          if (xhr.status === 0) {
-            errorMsg = 'Network error: Cannot connect to server. This may be a CORS issue.';
-          } else if (xhr.status === 404) {
-            errorMsg = 'File not found on server.';
-          }
-          
-          $('#loading').html('<div class="error-message"><h2>Error Loading Structure</h2><p>' + errorMsg + '</p><p>File URL: ${pdbqtUrl}</p></div>');
-          console.error('❌ AJAX Error:', status, error, xhr);
-        }
-      });
+        })
+        .catch(error => {
+          console.error('❌ Fetch error:', error);
+          $('#loading').html(
+            '<div class="error-message">' +
+            '<h2>Error Loading Structure</h2>' +
+            '<p>' + error.message + '</p>' +
+            '<p>URL: ${pdbqtUrl}</p>' +
+            '<p>Please check the console for more details.</p>' +
+            '</div>'
+          );
+        });
     }
 
     function changeStyle() {
+      if (!viewer) return;
+      
       currentStyle = (currentStyle + 1) % styles.length;
       const style = styles[currentStyle];
       const styleConfig = {};
       styleConfig[style.style] = {};
+      
       viewer.setStyle({}, styleConfig);
       viewer.render();
       $('#current-style').text(style.name);
     }
 
     function zoomIn() {
+      if (!viewer) return;
       viewer.zoom(1.2);
       viewer.render();
     }
 
     function zoomOut() {
+      if (!viewer) return;
       viewer.zoom(0.8);
       viewer.render();
     }
 
     function resetView() {
+      if (!viewer) return;
       viewer.zoomTo();
       viewer.render();
       currentStyle = 0;
@@ -569,10 +584,23 @@ app.get('/viewer/:filename', (req, res) => {
       window.open('${pdbqtUrl}', '_blank');
     }
 
+    // FIXED: Better initialization with error handling
     $(document).ready(function() {
-      console.log('🚀 Initializing 3D viewer...');
-      console.log('PDBQT URL:', '${pdbqtUrl}');
-      setTimeout(initViewer, 100);
+      console.log('🚀 Initializing 3D molecular viewer...');
+      console.log('📁 PDBQT URL:', '${pdbqtUrl}');
+      
+      // Check if 3Dmol is loaded
+      if (typeof $3Dmol === 'undefined') {
+        $('#loading').html(
+          '<div class="error-message">' +
+          '<h2>3Dmol.js Library Error</h2>' +
+          '<p>3Dmol.js library failed to load. Please check your internet connection.</p>' +
+          '</div>'
+        );
+        return;
+      }
+      
+      setTimeout(initViewer, 500);
     });
   </script>
 </body>
