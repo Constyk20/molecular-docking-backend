@@ -467,30 +467,93 @@ function parseDockingResults(stdout, outputFilePath) {
   let bestScore = null;
   let modes = [];
 
-  // Parse scores from stdout
+  console.log('🔍 Parsing Vina output for scores...');
+  console.log('Raw stdout:', stdout);
+
+  // Parse scores from stdout - multiple patterns for different Vina versions
   const lines = stdout.split('\n');
+  
   for (const line of lines) {
     const trimmed = line.trim();
+    console.log('Checking line:', trimmed);
     
-    // Match Vina output format: "1   -7.5      0.000      0.000"
-    if (/^\d+\s+-?\d+\.\d+\s+/.test(trimmed)) {
-      const parts = trimmed.split(/\s+/).filter(p => p);
-      if (parts.length >= 2) {
-        const score = parseFloat(parts[1]);
+    // Pattern 1: Standard Vina output "1   -7.5      0.000      0.000"
+    if (/^\s*\d+\s+(-?\d+\.\d+)\s+(-?\d+\.\d+)\s+(-?\d+\.\d+)/.test(trimmed)) {
+      const match = trimmed.match(/^\s*\d+\s+(-?\d+\.\d+)\s+(-?\d+\.\d+)\s+(-?\d+\.\d+)/);
+      if (match) {
+        const score = parseFloat(match[1]);
         scores.push(score);
         modes.push({
-          mode: parseInt(parts[0]),
+          mode: modes.length + 1,
           score: score,
-          rmsd_lb: parts[2] ? parseFloat(parts[2]) : null,
-          rmsd_ub: parts[3] ? parseFloat(parts[3]) : null
+          rmsd_lb: parseFloat(match[2]),
+          rmsd_ub: parseFloat(match[3])
         });
         
         if (bestScore === null || score < bestScore) {
           bestScore = score;
         }
+        console.log(`✅ Found score: ${score}`);
+      }
+    }
+    // Pattern 2: Alternative format "mode |   affinity | dist from best mode"
+    else if (trimmed.includes('affinity') && /-?\d+\.\d+/.test(trimmed)) {
+      const scoreMatch = trimmed.match(/(-?\d+\.\d+)/g);
+      if (scoreMatch && scoreMatch.length > 0) {
+        const score = parseFloat(scoreMatch[0]);
+        scores.push(score);
+        modes.push({
+          mode: modes.length + 1,
+          score: score,
+          rmsd_lb: null,
+          rmsd_ub: null
+        });
+        
+        if (bestScore === null || score < bestScore) {
+          bestScore = score;
+        }
+        console.log(`✅ Found score (affinity): ${score}`);
+      }
+    }
+    // Pattern 3: Simple score line with just the number
+    else if (/^\s*-?\d+\.\d+\s*$/.test(trimmed)) {
+      const score = parseFloat(trimmed);
+      scores.push(score);
+      modes.push({
+        mode: modes.length + 1,
+        score: score,
+        rmsd_lb: null,
+        rmsd_ub: null
+      });
+      
+      if (bestScore === null || score < bestScore) {
+        bestScore = score;
+      }
+      console.log(`✅ Found score (simple): ${score}`);
+    }
+  }
+
+  // If no scores found with patterns, try to find any floating point numbers
+  if (scores.length === 0) {
+    console.log('🔄 Trying fallback score detection...');
+    const allNumbers = stdout.match(/-?\d+\.\d+/g);
+    if (allNumbers) {
+      for (const numStr of allNumbers) {
+        const num = parseFloat(numStr);
+        // Likely docking scores are negative and between -20 and 0
+        if (num < 0 && num > -20) {
+          scores.push(num);
+          if (bestScore === null || num < bestScore) {
+            bestScore = num;
+          }
+          console.log(`✅ Found potential score (fallback): ${num}`);
+        }
       }
     }
   }
+
+  console.log(`📊 Final scores found: ${scores.length}`);
+  console.log(`🏆 Best score: ${bestScore}`);
 
   // Get file stats
   const fileStats = fsSync.statSync(outputFilePath);
@@ -508,7 +571,8 @@ function parseDockingResults(stdout, outputFilePath) {
       atoms: atomCount,
       bonds: bondCount,
       modified: fileStats.mtime
-    }
+    },
+    rawOutputPreview: stdout.substring(0, 500) + (stdout.length > 500 ? '...' : '')
   };
 }
 
