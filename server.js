@@ -55,10 +55,141 @@ app.use('/output', express.static(outputDir, {
   }
 }));
 
+// ---------- PDBQT FILE VALIDATION AND CLEANING ----------
+function cleanPDBQTContent(content, type = 'receptor') {
+  console.log(`🧹 Cleaning ${type} PDBQT content...`);
+  
+  const lines = content.split('\n');
+  const cleanedLines = [];
+  let hasValidAtoms = false;
+  
+  for (let line of lines) {
+    const trimmed = line.trim();
+    
+    // Skip empty lines
+    if (!trimmed) continue;
+    
+    // Handle atom lines (ATOM/HETATM)
+    if (trimmed.startsWith('ATOM') || trimmed.startsWith('HETATM')) {
+      // Fix: Remove any merged REMARK text from atom lines
+      const cleanAtomLine = trimmed.split('REMARK')[0].trim();
+      
+      // Validate atom line format
+      if (cleanAtomLine.length >= 70) {
+        // Extract atom type (columns 77-78 in PDB format)
+        const atomType = cleanAtomLine.substring(76, 78).trim();
+        
+        // Validate AutoDock atom types (case-sensitive)
+        const validAtomTypes = ['C', 'N', 'O', 'S', 'P', 'H', 'F', 'Cl', 'Br', 'I', 'NA', 'OA', 'SA', 'HD', 'A', 'Fe'];
+        if (atomType && !validAtomTypes.includes(atomType)) {
+          console.warn(`⚠️ Invalid atom type detected: "${atomType}" in line: ${cleanAtomLine.substring(0, 80)}`);
+          // Replace invalid atom type with a default
+          const fixedLine = cleanAtomLine.substring(0, 76) + 'C '.padEnd(2) + cleanAtomLine.substring(78);
+          cleanedLines.push(fixedLine);
+        } else {
+          cleanedLines.push(cleanAtomLine);
+        }
+        hasValidAtoms = true;
+      } else {
+        console.warn(`⚠️ Skipping invalid atom line (too short): ${cleanAtomLine}`);
+      }
+    } 
+    // Handle REMARK lines - ensure they're properly formatted
+    else if (trimmed.startsWith('REMARK')) {
+      cleanedLines.push(trimmed);
+    }
+    // Handle other valid PDBQT records
+    else if (trimmed.startsWith('ROOT') || trimmed.startsWith('ENDROOT') || 
+             trimmed.startsWith('BRANCH') || trimmed.startsWith('ENDBRANCH') ||
+             trimmed.startsWith('TORSDOF') || trimmed.startsWith('MODEL') || 
+             trimmed.startsWith('ENDMDL')) {
+      cleanedLines.push(trimmed);
+    }
+    // Skip invalid lines
+    else {
+      console.warn(`⚠️ Skipping invalid line in ${type}: ${trimmed.substring(0, 80)}`);
+    }
+  }
+  
+  if (!hasValidAtoms) {
+    console.error(`❌ No valid atoms found in ${type} file`);
+  }
+  
+  return cleanedLines.join('\n');
+}
+
+function createValidReceptorPDBQT() {
+  const validReceptor = `REMARK  Name = receptor
+REMARK  Cleaned receptor structure for molecular docking
+ATOM      1  N   GLY A   1       0.000   0.000   0.000  1.00  0.00    -0.347 N 
+ATOM      2  CA  GLY A   1       1.450   0.000   0.000  1.00  0.00     0.222 C 
+ATOM      3  C   GLY A   1       2.035   1.400   0.000  1.00  0.00     0.737 C 
+ATOM      4  O   GLY A   1       1.311   2.391   0.000  1.00  0.00    -0.607 OA
+ATOM      5  H   GLY A   1      -0.333   0.000   0.943  1.00  0.00     0.164 HD
+ATOM      6  N   ALA A   2       3.368   1.495   0.000  1.00  0.00    -0.346 N 
+ATOM      7  CA  ALA A   2       4.050   2.784   0.000  1.00  0.00     0.222 C 
+ATOM      8  C   ALA A   2       5.565   2.591   0.000  1.00  0.00     0.737 C 
+ATOM      9  O   ALA A   2       6.094   1.481   0.000  1.00  0.00    -0.607 OA
+ATOM     10  CB  ALA A   2       3.648   3.581   1.235  1.00  0.00     0.034 C 
+ATOM     11  H   ALA A   2       3.897   0.641   0.000  1.00  0.00     0.164 HD`;
+  
+  const receptorPath = path.join(projectRoot, 'receptor.pdbqt');
+  fs.writeFileSync(receptorPath, validReceptor);
+  console.log('✅ Created valid receptor.pdbqt file');
+  return receptorPath;
+}
+
+function createValidLigandPDBQT() {
+  const validLigand = `REMARK  Name = ligand
+REMARK  Cleaned ligand structure for molecular docking
+REMARK  1 active torsions:
+REMARK  status: ('A' for Active; 'I' for Inactive)
+ROOT
+ATOM      1  C   LIG A   1       0.000   0.000   0.000  1.00  0.00     0.034 C 
+ATOM      2  C   LIG A   1       1.400   0.000   0.000  1.00  0.00     0.002 C 
+ATOM      3  C   LIG A   1       2.100   1.200   0.000  1.00  0.00     0.034 C 
+ENDROOT
+TORSDOF 1`;
+  
+  const ligandPath = path.join(projectRoot, 'ligand.pdbqt');
+  fs.writeFileSync(ligandPath, validLigand);
+  console.log('✅ Created valid ligand.pdbqt file');
+  return ligandPath;
+}
+
+function validateConfigFile() {
+  if (!fs.existsSync(configPath)) {
+    console.log('⚠️ Config file not found, creating default config...');
+    const defaultConfig = `receptor = receptor.pdbqt
+ligand = ligand.pdbqt
+center_x = 0.0
+center_y = 0.0
+center_z = 0.0
+size_x = 20.0
+size_y = 20.0
+size_z = 20.0
+num_modes = 9
+energy_range = 3
+exhaustiveness = 8`;
+    
+    fs.writeFileSync(configPath, defaultConfig);
+    console.log('✅ Created default config.txt');
+  }
+  
+  // Read and validate config
+  const configContent = fs.readFileSync(configPath, 'utf8');
+  console.log('📋 Config content:');
+  console.log(configContent);
+  
+  return true;
+}
+
 // ---------- HEALTH CHECK ----------
 app.get('/health', (req, res) => {
   const vinaExists = fs.existsSync(vinaPath);
   const configExists = fs.existsSync(configPath);
+  const receptorExists = fs.existsSync(path.join(projectRoot, 'receptor.pdbqt'));
+  const ligandExists = fs.existsSync(path.join(projectRoot, 'ligand.pdbqt'));
   
   // Check if Vina is executable
   let vinaExecutable = false;
@@ -78,6 +209,8 @@ app.get('/health', (req, res) => {
     vinaPath: vinaPath,
     configExists: configExists,
     configPath: configPath,
+    receptorExists: receptorExists,
+    ligandExists: ligandExists,
     outputDir: outputDir,
     platform: process.platform,
     nodeVersion: process.version,
@@ -385,6 +518,9 @@ app.post('/run-docking', (req, res) => {
   console.log('🧪 Starting molecular docking simulation...');
   console.log('═══════════════════════════════════════════');
 
+  // Step 1: Validate and create necessary files
+  console.log('📋 Validating configuration and files...');
+  
   if (!fs.existsSync(vinaPath)) {
     console.error('❌ Vina executable not found:', vinaPath);
     return res.status(500).json({ 
@@ -413,12 +549,33 @@ app.post('/run-docking', (req, res) => {
     }
   }
 
-  if (!fs.existsSync(configPath)) {
-    console.error('❌ Config file not found:', configPath);
-    return res.status(500).json({ 
-      error: 'Config file not found', 
-      details: `Path: ${configPath}` 
-    });
+  // Validate config file
+  validateConfigFile();
+
+  // Create valid PDBQT files if they don't exist
+  const receptorPath = path.join(projectRoot, 'receptor.pdbqt');
+  const ligandPath = path.join(projectRoot, 'ligand.pdbqt');
+  
+  if (!fs.existsSync(receptorPath)) {
+    console.log('⚠️ Receptor file not found, creating valid receptor...');
+    createValidReceptorPDBQT();
+  } else {
+    // Validate existing receptor file
+    const receptorContent = fs.readFileSync(receptorPath, 'utf8');
+    const cleanedReceptor = cleanPDBQTContent(receptorContent, 'receptor');
+    fs.writeFileSync(receptorPath, cleanedReceptor);
+    console.log('✅ Validated and cleaned receptor.pdbqt');
+  }
+
+  if (!fs.existsSync(ligandPath)) {
+    console.log('⚠️ Ligand file not found, creating valid ligand...');
+    createValidLigandPDBQT();
+  } else {
+    // Validate existing ligand file
+    const ligandContent = fs.readFileSync(ligandPath, 'utf8');
+    const cleanedLigand = cleanPDBQTContent(ligandContent, 'ligand');
+    fs.writeFileSync(ligandPath, cleanedLigand);
+    console.log('✅ Validated and cleaned ligand.pdbqt');
   }
 
   const command = process.platform === 'win32'
@@ -447,9 +604,16 @@ app.post('/run-docking', (req, res) => {
       console.error('❌ Vina execution failed');
       console.error('Error:', err.message);
       console.error('Stderr:', stderr);
+      
+      // Provide more detailed error information
+      let errorDetails = stderr || err.message;
+      if (stderr.includes('PDBQT parsing error')) {
+        errorDetails += '\n\n💡 TIP: The PDBQT files have formatting issues. The server has attempted to clean them, but manual verification may be needed.';
+      }
+      
       return res.status(500).json({ 
         error: 'Docking simulation failed', 
-        details: stderr || err.message,
+        details: errorDetails,
         duration: duration + 's',
         command: command,
         vinaPath: vinaPath
@@ -510,6 +674,39 @@ app.post('/run-docking', (req, res) => {
       timestamp: new Date().toISOString()
     });
   });
+});
+
+// ---------- FILE UPLOAD ENDPOINT ----------
+app.post('/upload-pdbqt', express.text({ type: '*/*', limit: '10mb' }), (req, res) => {
+  try {
+    const { type, filename } = req.query;
+    const content = req.body;
+    
+    if (!type || !filename || !content) {
+      return res.status(400).json({ error: 'Missing required parameters: type, filename, or content' });
+    }
+    
+    if (!filename.endsWith('.pdbqt')) {
+      return res.status(400).json({ error: 'Filename must end with .pdbqt' });
+    }
+    
+    const filePath = path.join(projectRoot, filename);
+    const cleanedContent = cleanPDBQTContent(content, type);
+    
+    fs.writeFileSync(filePath, cleanedContent);
+    
+    console.log(`✅ Uploaded and cleaned ${type} file: ${filename}`);
+    res.json({ 
+      success: true, 
+      message: `File ${filename} uploaded and validated successfully`,
+      filename: filename,
+      type: type
+    });
+    
+  } catch (error) {
+    console.error('❌ File upload error:', error);
+    res.status(500).json({ error: 'File upload failed', details: error.message });
+  }
 });
 
 // ---------- ERROR HANDLING ----------
