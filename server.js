@@ -464,7 +464,7 @@ async function validateSystemRequirements() {
 
 function parseDockingResults(stdout, outputFilePath) {
   const scores = [];
-  let bestScore = 'N/A';
+  let bestScore = null;
   let modes = [];
 
   // Parse scores from stdout
@@ -485,7 +485,7 @@ function parseDockingResults(stdout, outputFilePath) {
           rmsd_ub: parts[3] ? parseFloat(parts[3]) : null
         });
         
-        if (bestScore === 'N/A' || score < bestScore) {
+        if (bestScore === null || score < bestScore) {
           bestScore = score;
         }
       }
@@ -496,15 +496,17 @@ function parseDockingResults(stdout, outputFilePath) {
   const fileStats = fsSync.statSync(outputFilePath);
   const fileContent = fsSync.readFileSync(outputFilePath, 'utf8');
   const atomCount = (fileContent.match(/ATOM/g) || []).length;
+  const bondCount = (fileContent.match(/BRANCH|ENDBRANCH|TORSION/g) || []).length;
 
   return {
-    bestScore: bestScore !== 'N/A' ? bestScore : null,
-    bestScoreFormatted: bestScore !== 'N/A' ? `${bestScore} kcal/mol` : 'N/A',
+    bestScore: bestScore,
+    bestScoreFormatted: bestScore !== null ? `${bestScore} kcal/mol` : 'N/A',
     allScores: scores,
     modes: modes,
     fileStats: {
       size: fileStats.size,
       atoms: atomCount,
+      bonds: bondCount,
       modified: fileStats.mtime
     }
   };
@@ -741,10 +743,6 @@ function createViewerHTML(filename, pdbqtUrl, protocol, host) {
         <span class="info-value" id="atom-count">—</span>
       </div>
       <div class="info-item">
-        <span class="info-label">Bonds:</span>
-        <span class="info-value" id="bond-count">—</span>
-      </div>
-      <div class="info-item">
         <span class="info-label">Status:</span>
         <span class="info-value" id="status">Loading...</span>
       </div>
@@ -754,15 +752,13 @@ function createViewerHTML(filename, pdbqtUrl, protocol, host) {
   <script>
     let viewer = null;
     let currentStyle = 0;
-    let currentModel = null;
     
     const styles = [
       { name: 'Stick', config: { stick: { radius: 0.15 } } },
       { name: 'Cartoon', config: { cartoon: { style: 'oval', color: 'spectrum' } } },
       { name: 'Sphere', config: { sphere: { scale: 0.3 } } },
       { name: 'Line', config: { line: { lineWidth: 2 } } },
-      { name: 'Cross', config: { cross: { lineWidth: 1 } } },
-      { name: 'Surface', config: { surface: { opacity: 0.7 } } }
+      { name: 'Cross', config: { cross: { lineWidth: 1 } } }
     ];
 
     function updateLoading(message) {
@@ -805,14 +801,10 @@ function createViewerHTML(filename, pdbqtUrl, protocol, host) {
                 throw new Error('Structure file is empty');
               }
 
-              currentModel = viewer.addModel(data, 'pdbqt');
+              // Add model to viewer
+              viewer.addModel(data, 'pdbqt');
               
-              if (!currentModel) {
-                throw new Error('Failed to create molecular model');
-              }
-
-              const atoms = currentModel.selectedAtoms({});
-              const bonds = currentModel.selectedBonds({});
+              const atoms = viewer.getModel().selectedAtoms({});
               
               if (atoms.length === 0) {
                 throw new Error('No atoms found in structure file');
@@ -831,12 +823,10 @@ function createViewerHTML(filename, pdbqtUrl, protocol, host) {
               $('#loading').fadeOut(300);
               $('#info-panel').fadeIn(300);
               $('#atom-count').text(atoms.length.toLocaleString());
-              $('#bond-count').text(bonds.length.toLocaleString());
               $('#status').text('Loaded').css('color', '#48bb78');
               
               console.log('✅ Structure loaded successfully:', {
                 atoms: atoms.length,
-                bonds: bonds.length,
                 style: styles[currentStyle].name
               });
               
