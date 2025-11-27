@@ -449,67 +449,55 @@ app.post('/run-docking', (req, res) => {
     console.log('✅ Docking completed in', duration, 'seconds');
     if (stdout) console.log('Stdout:', stdout);
 
+    // Save stdout as log file for compatibility
     const logPath = path.join(outputDir, 'log.txt');
-    if (!fs.existsSync(logPath)) {
-      console.error('❌ Log file not generated');
-      return res.status(500).json({ 
-        error: 'Log file not generated', 
-        details: 'Vina did not create log.txt' 
-      });
-    }
+    fs.writeFileSync(logPath, stdout);
+    console.log('✅ Log saved to:', logPath);
 
-    fs.readFile(logPath, 'utf8', (readErr, logData) => {
-      if (readErr) {
-        console.error('❌ Cannot read log file:', readErr.message);
-        return res.status(500).json({ 
-          error: 'Cannot read log file', 
-          details: readErr.message 
-        });
-      }
-
-      let bestScore = 'Not found';
-      let allScores = [];
-      
-      for (const line of logData.split('\n')) {
-        const trimmed = line.trim();
-        if (/^\d+\s+-?\d+\.\d+/.test(trimmed)) {
-          const parts = trimmed.split(/\s+/);
-          const score = parts[1];
-          allScores.push(score);
-          if (bestScore === 'Not found') {
-            bestScore = score;
-          }
+    // Parse scores from stdout
+    let bestScore = 'Not found';
+    let allScores = [];
+    
+    for (const line of stdout.split('\n')) {
+      const trimmed = line.trim();
+      // Match lines like: "1   -7.5      0.000      0.000"
+      if (/^\d+\s+-?\d+\.\d+/.test(trimmed)) {
+        const parts = trimmed.split(/\s+/);
+        const score = parts[1];
+        allScores.push(score);
+        if (bestScore === 'Not found') {
+          bestScore = score;
         }
       }
+    }
 
-      const protocol = req.protocol;
-      const host = req.get('host');
-      const viewerUrl = `${protocol}://${host}/viewer/output_docked.pdbqt`;
-      const pdbqtUrl = `${protocol}://${host}/output/output_docked.pdbqt`;
+    const protocol = req.protocol;
+    const host = req.get('host');
+    const viewerUrl = `${protocol}://${host}/viewer/output_docked.pdbqt`;
+    const pdbqtUrl = `${protocol}://${host}/output/output_docked.pdbqt`;
 
-      console.log('═══════════════════════════════════════════');
-      console.log('📊 Results:');
-      console.log('  Best Score:', bestScore, 'kcal/mol');
-      console.log('  All Scores:', allScores.join(', '));
-      console.log('  Duration:', duration, 's');
-      console.log('═══════════════════════════════════════════');
-      console.log('🔗 URLs:');
-      console.log('  Viewer:', viewerUrl);
-      console.log('  PDBQT:', pdbqtUrl);
-      console.log('═══════════════════════════════════════════');
+    console.log('═══════════════════════════════════════════');
+    console.log('📊 Results:');
+    console.log('  Best Score:', bestScore, 'kcal/mol');
+    console.log('  All Scores:', allScores.join(', '));
+    console.log('  Duration:', duration, 's');
+    console.log('═══════════════════════════════════════════');
+    console.log('🔗 URLs:');
+    console.log('  Viewer:', viewerUrl);
+    console.log('  PDBQT:', pdbqtUrl);
+    console.log('═══════════════════════════════════════════');
 
-      res.json({
-        success: true,
-        message: 'Docking completed successfully!',
-        score: bestScore + ' kcal/mol',
-        bestScore: bestScore,
-        allScores: allScores,
-        pdbqtUrl: viewerUrl,
-        viewerUrl: viewerUrl,
-        downloadUrl: pdbqtUrl,
-        duration: duration + 's',
-        timestamp: new Date().toISOString()
-      });
+    res.json({
+      success: true,
+      message: 'Docking completed successfully!',
+      score: bestScore + ' kcal/mol',
+      bestScore: bestScore,
+      allScores: allScores,
+      pdbqtUrl: viewerUrl,
+      viewerUrl: viewerUrl,
+      downloadUrl: pdbqtUrl,
+      duration: duration + 's',
+      timestamp: new Date().toISOString()
     });
   });
 });

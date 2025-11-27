@@ -4,6 +4,8 @@ services:
     runtime: node
     plan: free
     region: oregon
+    # Important: Set the working directory
+    rootDir: backend
     buildCommand: |
       echo "📦 Installing dependencies..."
       npm install
@@ -21,7 +23,11 @@ services:
       fi
       echo "🔑 Setting execute permissions..."
       chmod +x vina_1.2.5_linux_x86_64
-      ls -la
+      echo "🔗 Creating symlink 'vina' -> 'vina_1.2.5_linux_x86_64'..."
+      ln -sf vina_1.2.5_linux_x86_64 vina
+      chmod +x vina
+      echo "✅ Listing tools directory:"
+      ls -lah
       cd ..
       echo "📝 Checking config.txt..."
       if [ ! -f "config.txt" ]; then
